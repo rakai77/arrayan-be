@@ -7,3 +7,5 @@ yarn-debug.log*
 yarn-error.log*
 .DS_Store
 
+# Documentation & AI Context (Lokal saja, tidak di-push ke remote Git)
+docs/
