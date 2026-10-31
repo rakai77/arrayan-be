@@ -1,0 +1,74 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// 1. Roles & Permissions (Fleksibel Data-Driven, Bukan Enum Kaku)
+// -------------------------------------------------------------
+model Role {
+  id          String   @id @default(uuid())
+  code        String   @unique // 'SUPER_ADMIN', 'MANAGEMENT', 'SR_MANAGER', 'MANAGER', 'SUPERVISOR', 'STAFF'
+  name        String   // 'Super Admin / HR GA', 'Management', etc.
+  description String?
+  permissions Json     @default("[]") // Array of string permissions
+  users       User[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+// -------------------------------------------------------------
+// 2. User Accounts (Khusus Autentikasi & Keamanan)
+// -------------------------------------------------------------
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  roleId       String    @map("role_id")
+  role         Role      @relation(fields: [roleId], references: [id])
+  employee     Employee?
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// 3. Employee Profile & Hierarchy (Tree Branch)
+// -------------------------------------------------------------
+model Employee {
+  id             String         @id @default(uuid())
+  userId         String?        @unique @map("user_id")
+  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  nik            String         @unique
+  fullName       String         @map("full_name")
+  jobTitle       String         @map("job_title")
+  department     String?        // Misal: IT, HR, Marketing
+  employmentType EmploymentType @default(PROBATION) @map("employment_type")
+  joinDate       DateTime       @default(now()) @map("join_date")
+
+  // Tree Branch Hierarchy: Self-referencing Foreign Key
+  managerId      String?        @map("manager_id")
+  manager        Employee?      @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates   Employee[]     @relation("EmployeeHierarchy")
+
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  @@map("employees")
+}
+
+enum EmploymentType {
+  PROBATION
+  KARTAP
+  PKL
+}
+

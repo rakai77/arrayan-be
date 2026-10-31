@@ -1,0 +1,85 @@
+import 'dotenv/config'
+import Fastify from 'fastify'
+import cors from '@fastify/cors'
+import cookie from '@fastify/cookie'
+import jwt from '@fastify/jwt'
+import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
+import { PrismaClient } from '@prisma/client'
+
+const fastify = Fastify({ logger: true })
+export const prisma = new PrismaClient()
+
+async function bootstrap() {
+  // 1. CORS Setup
+  await fastify.register(cors, {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    credentials: true,
+  })
+
+  // 2. Cookie & JWT Setup
+  await fastify.register(cookie, {
+    secret: process.env.COOKIE_SECRET || 'cookie_fallback_secret',
+  })
+
+  await fastify.register(jwt, {
+    secret: process.env.JWT_SECRET || 'jwt_fallback_secret',
+    cookie: {
+      cookieName: 'arrayan_token',
+      signed: false,
+    },
+  })
+
+  // 3. Auto Swagger API Documentation
+  await fastify.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Arryan HRIS Backend API',
+        description: 'REST API documentation for Arryan HRIS Platform',
+        version: '1.0.0',
+      },
+    },
+  })
+
+  await fastify.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
+  })
+
+  // 4. Health Check Endpoint
+  fastify.get('/health', async () => {
+    return { status: 'ok', timestamp: new Date().toISOString() }
+  })
+
+  // 5. Example Public Welcome Route
+  fastify.get('/api/welcome', async () => {
+    const rolesCount = await prisma.role.count()
+    const usersCount = await prisma.user.count()
+    return {
+      message: 'Selamat datang di API Arryan HRIS!',
+      environment: process.env.NODE_ENV,
+      database: {
+        connected: true,
+        totalRoles: rolesCount,
+        totalUsers: usersCount,
+      },
+      docsUrl: 'http://localhost:4000/docs',
+    }
+  })
+
+  // Start Server
+  const PORT = Number(process.env.PORT) || 4000
+  try {
+    await fastify.listen({ port: PORT, host: '0.0.0.0' })
+    console.log(`🚀 Server berjalan di http://localhost:${PORT}`)
+    console.log(`📖 Dokumentasi Swagger: http://localhost:${PORT}/docs`)
+  } catch (err) {
+    fastify.log.error(err)
+    process.exit(1)
+  }
+}
+
+bootstrap()
