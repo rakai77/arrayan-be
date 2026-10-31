@@ -13,6 +13,8 @@ jobs:
   validate:
     name: Build & Typecheck
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy_db?schema=public
 
     steps:
       - name: Checkout Source Code
