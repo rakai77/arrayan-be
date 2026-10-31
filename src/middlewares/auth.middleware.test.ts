@@ -4,8 +4,9 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 
 describe('auth.middleware', () => {
   describe('authenticate', () => {
-    it('harus mengembalikan 401 jika cookie arrayan_token tidak ada', async () => {
+    it('harus mengembalikan 401 jika header Authorization dan cookie tidak ada', async () => {
       const request = {
+        headers: {},
         cookies: {},
       } as unknown as FastifyRequest
 
@@ -22,11 +23,12 @@ describe('auth.middleware', () => {
       expect(sendMock).toHaveBeenCalledWith(
         expect.objectContaining({
           error: 'Unauthorized',
+          message: expect.stringContaining('Token otentikasi tidak ditemukan'),
         }),
       )
     })
 
-    it('harus mengisi userSession jika jwtVerify berhasil', async () => {
+    it('harus mengisi userSession jika Authorization: Bearer token valid', async () => {
       const mockSession = {
         id: 'user-123',
         email: 'user@arrayan.com',
@@ -34,8 +36,13 @@ describe('auth.middleware', () => {
       }
 
       const request = {
-        cookies: { arrayan_token: 'valid-jwt-token' },
-        jwtVerify: vi.fn().mockResolvedValue(mockSession),
+        headers: { authorization: 'Bearer valid-bearer-token' },
+        cookies: {},
+        server: {
+          jwt: {
+            verify: vi.fn().mockReturnValue(mockSession),
+          },
+        },
       } as unknown as FastifyRequest
 
       const reply = {
@@ -45,13 +52,49 @@ describe('auth.middleware', () => {
 
       await authenticate(request, reply)
 
+      expect(request.server.jwt.verify).toHaveBeenCalledWith('valid-bearer-token')
       expect(request.userSession).toEqual(mockSession)
     })
 
-    it('harus mengembalikan 401 jika jwtVerify gagal / token invalid', async () => {
+    it('harus mengisi userSession dari cookie jika header Authorization tidak ada', async () => {
+      const mockSession = {
+        id: 'user-123',
+        email: 'user@arrayan.com',
+        role: { code: 'STAFF', name: 'Staff', permissions: [] },
+      }
+
       const request = {
-        cookies: { arrayan_token: 'invalid-jwt-token' },
-        jwtVerify: vi.fn().mockRejectedValue(new Error('Invalid token')),
+        headers: {},
+        cookies: { arrayan_access_token: 'valid-cookie-token' },
+        server: {
+          jwt: {
+            verify: vi.fn().mockReturnValue(mockSession),
+          },
+        },
+      } as unknown as FastifyRequest
+
+      const reply = {
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+      } as unknown as FastifyReply
+
+      await authenticate(request, reply)
+
+      expect(request.server.jwt.verify).toHaveBeenCalledWith('valid-cookie-token')
+      expect(request.userSession).toEqual(mockSession)
+    })
+
+    it('harus mengembalikan 401 jika token invalid atau kedaluwarsa', async () => {
+      const request = {
+        headers: { authorization: 'Bearer invalid-token' },
+        cookies: {},
+        server: {
+          jwt: {
+            verify: vi.fn().mockImplementation(() => {
+              throw new Error('jwt expired')
+            }),
+          },
+        },
       } as unknown as FastifyRequest
 
       const statusMock = vi.fn().mockReturnThis()
@@ -66,7 +109,7 @@ describe('auth.middleware', () => {
       expect(statusMock).toHaveBeenCalledWith(401)
       expect(sendMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Token otentikasi tidak valid.',
+          message: 'Token otentikasi tidak valid atau telah kedaluwarsa.',
         }),
       )
     })

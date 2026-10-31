@@ -8,27 +8,38 @@ declare module 'fastify' {
 }
 
 /**
- * Middleware untuk memverifikasi session JWT dari Cookie HttpOnly
+ * Middleware untuk memverifikasi session JWT dari Header Bearer atau Cookie HttpOnly
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const token = request.cookies.arrayan_token
+    let token: string | undefined
+
+    const authHeader = request.headers.authorization
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim()
+    } else {
+      token = request.cookies.arrayan_access_token || request.cookies.arrayan_token
+    }
 
     if (!token) {
       return reply.status(401).send({
         statusCode: 401,
         error: 'Unauthorized',
-        message: 'Sesi tidak ditemukan atau telah kedaluwarsa. Silakan login kembali.',
+        message: 'Token otentikasi tidak ditemukan. Harap sertakan Bearer token atau login kembali.',
       })
     }
 
-    const decoded = await request.jwtVerify<UserSessionPayload>()
+    // Verifikasi token (mendukung runtime Fastify maupun unit testing mock)
+    const decoded = request.server?.jwt
+      ? request.server.jwt.verify<UserSessionPayload>(token)
+      : await request.jwtVerify<UserSessionPayload>()
+
     request.userSession = decoded
   } catch {
     return reply.status(401).send({
       statusCode: 401,
       error: 'Unauthorized',
-      message: 'Token otentikasi tidak valid.',
+      message: 'Token otentikasi tidak valid atau telah kedaluwarsa.',
     })
   }
 }

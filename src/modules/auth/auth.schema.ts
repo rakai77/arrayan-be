@@ -7,6 +7,12 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>
 
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(10, { message: 'Refresh token tidak valid' }).optional(),
+})
+
+export type RefreshInput = z.infer<typeof refreshSchema>
+
 export interface UserSessionPayload {
   id: string
   email: string
@@ -23,4 +29,9 @@ export interface UserSessionPayload {
     department: string | null
     managerId: string | null
   } | null
+}
+
+export interface AuthTokens {
+  accessToken: string
+  refreshToken: string
 }

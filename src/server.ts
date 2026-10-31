@@ -38,6 +38,16 @@ async function bootstrap() {
         description: 'REST API documentation for Arryan HRIS Platform',
         version: '1.0.0',
       },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description: 'Masukkan Access Token JWT (tanpa prefix Bearer)',
+          },
+        },
+      },
       tags: [
         { name: 'Auth', description: 'Otentikasi, Sesi, dan Keamanan Pengguna' },
       ],

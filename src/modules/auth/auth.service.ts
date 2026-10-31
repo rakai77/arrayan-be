@@ -1,8 +1,22 @@
+import crypto from 'node:crypto'
 import bcrypt from 'bcrypt'
 import { prisma } from '../../lib/prisma.js'
 import type { LoginInput, UserSessionPayload } from './auth.schema.js'
 
+const REFRESH_TOKEN_EXPIRY_DAYS = 7
+
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+export function generateOpaqueToken(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+
 export const authService = {
+  hashToken,
+  generateOpaqueToken,
+
   async validateUser(input: LoginInput): Promise<UserSessionPayload> {
     const user = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase().trim() },
@@ -50,6 +64,64 @@ export const authService = {
           }
         : null,
     }
+  },
+
+  async createRefreshToken(userId: string): Promise<string> {
+    const rawToken = generateOpaqueToken()
+    const tokenHash = hashToken(rawToken)
+
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS)
+
+    await prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash,
+        expiresAt,
+      },
+    })
+
+    return rawToken
+  },
+
+  async rotateRefreshToken(rawToken: string): Promise<{ user: UserSessionPayload; newRefreshToken: string }> {
+    const tokenHash = hashToken(rawToken)
+
+    const existingToken = await prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
+    })
+
+    if (!existingToken || existingToken.revoked || existingToken.expiresAt < new Date()) {
+      throw new Error('Refresh token tidak valid atau telah kedaluwarsa')
+    }
+
+    // Revoke token lama (Token Rotation)
+    await prisma.refreshToken.update({
+      where: { id: existingToken.id },
+      data: { revoked: true },
+    })
+
+    if (!existingToken.user.isActive) {
+      throw new Error('Akun dinonaktifkan')
+    }
+
+    // Terbitkan refresh token baru
+    const newRefreshToken = await this.createRefreshToken(existingToken.userId)
+    const userProfile = await this.getUserProfile(existingToken.userId)
+
+    return {
+      user: userProfile,
+      newRefreshToken,
+    }
+  },
+
+  async revokeRefreshToken(rawToken: string): Promise<void> {
+    const tokenHash = hashToken(rawToken)
+    await prisma.refreshToken.updateMany({
+      where: { tokenHash, revoked: false },
+      data: { revoked: true },
+    })
   },
 
   async getUserProfile(userId: string): Promise<UserSessionPayload> {
